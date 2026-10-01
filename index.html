@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ujian Sekolah</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      background: white;
+      color: #002f6c;
+      font-family: Arial, sans-serif;
+    }
+
+    #logo {
+      width: 150px;
+      max-width: 60%;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+
+    #pesan {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+      padding: 0 10px;
+    }
+
+    #clock {
+      font-size: 20px;
+      margin-bottom: 20px;
+      text-align: center;
+      padding: 0 10px;
+    }
+
+    .exam-button {
+      background: #002f6c;
+      color: white;
+      padding: 15px 35px;
+      border: none;
+      border-radius: 10px;
+      font-size: 20px;
+      cursor: pointer;
+      transition: 0.3s;
+      margin-bottom: 25px;
+    }
+
+    .exam-button:hover {
+      background: #fdb813;
+      color: #002f6c;
+      transform: scale(1.1);
+    }
+
+    /* --- AREA INFORMASI --- */
+    #area-info {
+      width: 100%;
+      padding: 0 12px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .info-item {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .info-judul {
+      font-size: 22px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 10px;
+      color: #002f6c;
+    }
+
+    .info-img {
+      width: 100%;     /* lebar mengikuti lebar layar */
+      height: auto;    /* tinggi otomatis */
+      display: block;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .info-status {
+      text-align: center;
+      font-size: 16px;
+      opacity: 0.7;
+      padding: 10px;
+    }
+
+    /* Popup Token */
+    #tokenPopup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    #popupBox {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      width: 300px;
+      max-width: 90%;
+    }
+
+    #popupBox h3 { margin-top: 0; }
+
+    #popupBox input {
+      width: 90%;
+      padding: 10px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    #popupBox .btn-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    #popupBox button {
+      padding: 10px 25px;
+      background: #002f6c;
+      border: none;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #popupBox button.batal { background: #888; }
+
+    #popupBox button:hover {
+      background: #fdb813;
+      color: #002f6c;
+    }
+
+    #popupBox button:disabled { opacity: 0.6; cursor: wait; }
+  </style>
+</head>
+<body>
+
+  <img id="logo" src="https://res.cloudinary.com/dsucuk7do/image/upload/v1771473226/Asset_1_yn4xy0.png" alt="Logo">
+  <div id="clock"></div>
+  <div id="pesan">UJIAN TERM IV SEMESTER GENAP <br>2025/2026</div>
+
+  <button class="exam-button" onclick="openToken()">MASUK</button>
+
+  <!-- AREA INFORMASI (diambil dari sheet "info") -->
+  <div id="area-info">
+    <div class="info-status">Memuat informasi...</div>
+  </div>
+
+  <div id="tokenPopup">
+    <div id="popupBox">
+      <h3>Masukkan Token</h3>
+      <input type="text" id="tokenInput" placeholder="Masukkan token" autocomplete="off">
+      <div class="btn-row">
+        <button class="batal" onclick="closeToken()">Batal</button>
+        <button id="btnSubmit" onclick="cekToken()">Submit</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ===== KONFIGURASI ===== */
+const SHEET_ID = "1he2epYmc1tWhJPk4G58QgBdxNhNuQ_wFRPNcOhl61H0";
+
+// Sheet token = sheet pertama (kolom A). Ganti nama jika token ada di sheet lain, mis. "token"
+const SHEET_TOKEN = "";      // kosong = sheet pertama
+const SHEET_INFO  = "info";  // nama sheet informasi
+
+// Cadangan: CSV publish (bisa terlambat beberapa menit dari spreadsheet asli)
+const CSV_TOKEN_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT-3EsI6GEIKbpP4XFgSt866xwwz27x1pfcThRoIEXGKNOXHZ2kmCKuvHrMhvN9-264TFKw3uu2h035/pub?output=csv";
+
+const REFRESH_INFO_MS = 60000; // info diperbarui otomatis tiap 60 detik
+
+/* ===== UTIL GOOGLE SHEETS ===== */
+function gvizUrl(sheetName) {
+  let u = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
+          "/gviz/tq?tqx=out:json&headers=1&_=" + Date.now();
+  if (sheetName) u += "&sheet=" + encodeURIComponent(sheetName);
+  return u;
+}
+
+async function fetchGviz(sheetName) {
+  const res = await fetch(gvizUrl(sheetName), { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const text = await res.text();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  return JSON.parse(text.substring(start, end + 1)).table;
+}
+
+function cellVal(c) {
+  if (!c || c.v === null || c.v === undefined) return "";
+  return c.v.toString().trim();
+}
+
+/* ===== TOKEN ===== */
+function openToken() {
+  document.getElementById("tokenPopup").style.display = "flex";
+  setTimeout(() => document.getElementById("tokenInput").focus(), 50);
+}
+
+function closeToken() {
+  document.getElementById("tokenPopup").style.display = "none";
+}
+
+async function ambilDaftarToken() {
+  try {
+    const table = await fetchGviz(SHEET_TOKEN);
+    const list = table.rows.map(r => cellVal(r.c && r.c[0])).filter(Boolean);
+    const label = (table.cols[0] && table.cols[0].label || "").trim();
+    if (label) list.push(label); // jaga-jaga bila baris pertama terbaca sebagai header
+    return list;
+  } catch (e) {
+    // fallback ke CSV publish
+    const res = await fetch(CSV_TOKEN_URL + "&_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    return text.split(/\r?\n/)
+      .map(line => line.split(",")[0].replace(/^"|"$/g, "").trim())
+      .filter(Boolean);
+  }
+}
+
+async function cekToken() {
+  const inputToken = document.getElementById("tokenInput").value.trim();
+  if (!inputToken) { alert("Token belum diisi"); return; }
+
+  const btn = document.getElementById("btnSubmit");
+  btn.disabled = true;
+  btn.textContent = "Memeriksa...";
+
+  try {
+    const daftar = await ambilDaftarToken();
+    if (daftar.includes(inputToken)) {
+      window.location.href = "mapel.html";
+    } else {
+      alert("Token Salah");
+    }
+  } catch (err) {
+    alert("Gagal memuat token. Periksa koneksi internet lalu coba lagi.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Submit";
+  }
+}
+
+document.getElementById("tokenInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") cekToken();
+});
+
+/* ===== AREA INFORMASI ===== */
+function directImageUrl(url) {
+  // Ubah link Google Drive menjadi link gambar langsung
+  const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/) ||
+            url.match(/drive\.google\.com\/(?:open|uc)\?(?:.*&)?id=([^&]+)/);
+  if (m) return "https://drive.google.com/thumbnail?id=" + m[1] + "&sz=w2000";
+  return url;
+}
+
+function renderInfo(items) {
+  const area = document.getElementById("area-info");
+  area.innerHTML = "";
+
+  if (!items.length) {
+    area.innerHTML = '<div class="info-status">Belum ada informasi.</div>';
+    return;
+  }
+
+  items.forEach(it => {
+    const box = document.createElement("div");
+    box.className = "info-item";
+
+    if (it.judul) {
+      const h = document.createElement("div");
+      h.className = "info-judul";
+      h.textContent = it.judul;
+      box.appendChild(h);
+    }
+
+    if (it.image) {
+      const img = document.createElement("img");
+      img.className = "info-img";
+      img.src = directImageUrl(it.image);
+      img.alt = it.judul || "Informasi";
+      img.loading = "lazy";
+      img.onerror = () => { img.style.display = "none"; };
+      box.appendChild(img);
+    }
+
+    area.appendChild(box);
+  });
+}
+
+async function loadInfo(first) {
+  try {
+    const table = await fetchGviz(SHEET_INFO);
+    let rows = table.rows;
+    let labels = table.cols.map(c => (c.label || "").trim().toLowerCase());
+
+    // Jika header tidak terbaca otomatis, pakai baris pertama sebagai header
+    if (!labels.includes("judul") && !labels.includes("image") && rows.length) {
+      labels = (rows[0].c || []).map(c => cellVal(c).toLowerCase());
+      rows = rows.slice(1);
+    }
+
+    let iJudul = labels.indexOf("judul");
+    let iImage = labels.indexOf("image");
+    if (iJudul < 0) iJudul = 0;
+    if (iImage < 0) iImage = 1;
+
+    const items = rows.map(r => ({
+      judul: cellVal(r.c && r.c[iJudul]),
+      image: cellVal(r.c && r.c[iImage])
+    })).filter(it => it.judul || it.image);
+
+    renderInfo(items);
+  } catch (err) {
+    if (first) {
+      document.getElementById("area-info").innerHTML =
+        '<div class="info-status">Informasi tidak dapat dimuat.</div>';
+    }
+  }
+}
+
+loadInfo(true);
+setInterval(() => loadInfo(false), REFRESH_INFO_MS);
+
+/* ===== JAM ===== */
+function updateClock() {
+  const now = new Date();
+  const options = {
+    weekday: 'long', year: 'numeric', month: 'long',
+    day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+  };
+  document.getElementById('clock').textContent =
+    now.toLocaleDateString('id-ID', options);
+}
+setInterval(updateClock, 1000);
+updateClock();
+</script>
+
+</body>
+</html>
